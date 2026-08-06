@@ -2,6 +2,7 @@ import { TrendingUp, Package, Wallet, Sprout, MapPin, Truck, CheckCircle2, Phone
 import ScreenHeader from "../components/ScreenHeader.jsx";
 import VegPhoto from "../components/VegPhoto.jsx";
 import SellingWorkflow from "../components/SellingWorkflow.jsx";
+import WeatherRibbon from "../components/WeatherRibbon";
 import { ORDERS, LISTINGS, DELIVERY, INSIGHTS, FARMER } from "../data/mock.js";
 
 function StatCard({ label, value, sub, icon: Icon }) {
@@ -38,6 +39,9 @@ export default function Dashboard({ setScreen, openMenu }) {
         <p className="text-sm text-stone-500">Let's sell today's harvest.</p>
       </div>
 
+
+<WeatherRibbon lat={farmer?.lat} lon={farmer?.lon} locationLabel={farmer?.village} />
+      
       {/* Quick stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Today's Revenue" value="₹12,450" sub="↑ 14% vs yesterday" icon={TrendingUp} />
