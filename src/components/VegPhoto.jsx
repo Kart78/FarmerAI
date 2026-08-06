@@ -1,29 +1,40 @@
-import { useState } from "react";
-import { Leaf } from "lucide-react";
+import { useEffect, useState } from "react";
+import { getVegetablePhoto } from "../lib/pexels.js";
 
-export default function VegPhoto({ src, alt, color = "bg-farm-800/10", size = 56, rounded = "rounded-lg", className = "" }) {
-  const [failed, setFailed] = useState(false);
-  const style = { width: size, height: size };
+export default function VegPhoto({ src, alt, color, size = 48, vegName }) {
+  const [photoUrl, setPhotoUrl] = useState(src || null);
 
-  if (failed || !src) {
+  useEffect(() => {
+    if (src) return; // already have an explicit photo (e.g. Supabase-stored URL)
+    if (!vegName) return;
+    let cancelled = false;
+    getVegetablePhoto(vegName).then((url) => {
+      if (!cancelled && url) setPhotoUrl(url);
+    });
+    return () => { cancelled = true; };
+  }, [src, vegName]);
+
+  if (photoUrl) {
     return (
-      <div
-        style={style}
-        className={`${rounded} ${color} flex items-center justify-center text-farm-800 shrink-0 ${className}`}
-      >
-        <Leaf size={Math.round(size * 0.4)} />
-      </div>
+      <img
+        src={photoUrl}
+        alt={alt}
+        width={size}
+        height={size}
+        className="rounded-lg object-cover"
+        style={{ width: size, height: size }}
+        loading="lazy"
+      />
     );
   }
 
+  // No API key / fetch failed — clean color swatch, not a broken image icon
   return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      style={style}
-      className={`${rounded} object-cover shrink-0 ${className}`}
-    />
+    <div
+      className={`rounded-lg flex items-center justify-center text-xs text-stone-500 ${color || "bg-stone-100"}`}
+      style={{ width: size, height: size }}
+    >
+      {alt?.[0] ?? "?"}
+    </div>
   );
 }
