@@ -28,18 +28,49 @@ function advisory({ precipProbMax, tMax, windMax }) {
   return { text: "Conditions look manageable — check crop-specific advice", tone: "neutral" };
 }
 
-export default function WeatherRibbon({ lat, lon, locationLabel }) {
-  const [state, setState] = useState({ status: "loading", data: null });
-
-  const useLat = lat ?? FALLBACK_LOCATION.lat;
-  const useLon = lon ?? FALLBACK_LOCATION.lon;
-  const label = locationLabel ?? (lat ? undefined : FALLBACK_LOCATION.label);
+// Resolves where to center the forecast:
+// 1) farmer's saved farm coords (most accurate — what they'll sell from)
+// 2) browser geolocation (wherever they're opening the app right now)
+// 3) Delhi fallback (never breaks)
+function useResolvedLocation(farmerLat, farmerLon, farmerLabel) {
+  const [loc, setLoc] = useState(
+    farmerLat != null && farmerLon != null
+      ? { lat: farmerLat, lon: farmerLon, label: farmerLabel, source: "farm" }
+      : null
+  );
 
   useEffect(() => {
+    if (loc) return; // already have farm coords, no need to ask the browser
+    if (!("geolocation" in navigator)) {
+      setLoc({ ...FALLBACK_LOCATION, source: "fallback" });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
+        setLoc({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          label: "Current location",
+          source: "browser",
+        }),
+      () => setLoc({ ...FALLBACK_LOCATION, source: "fallback" }),
+      { timeout: 8000, maximumAge: 10 * 60 * 1000 }
+    );
+  }, [loc]);
+
+  return loc;
+}
+
+export default function WeatherRibbon({ lat, lon, locationLabel }) {
+  const [state, setState] = useState({ status: "loading", data: null });
+  const loc = useResolvedLocation(lat, lon, locationLabel);
+
+  useEffect(() => {
+    if (!loc) return; // still resolving location
     let cancelled = false;
 
     async function load() {
-      const cacheKey = `weather:${useLat.toFixed(2)},${useLon.toFixed(2)}`;
+      const cacheKey = `weather:${loc.lat.toFixed(2)},${loc.lon.toFixed(2)}`;
       try {
         const cached = JSON.parse(sessionStorage.getItem(cacheKey) || "null");
         if (cached && Date.now() - cached.ts < CACHE_MS) {
@@ -50,8 +81,8 @@ export default function WeatherRibbon({ lat, lon, locationLabel }) {
 
       try {
         const url = new URL("https://api.open-meteo.com/v1/forecast");
-        url.searchParams.set("latitude", useLat);
-        url.searchParams.set("longitude", useLon);
+        url.searchParams.set("latitude", loc.lat);
+        url.searchParams.set("longitude", loc.lon);
         url.searchParams.set("current", "temperature_2m,weather_code");
         url.searchParams.set(
           "daily",
@@ -87,10 +118,12 @@ export default function WeatherRibbon({ lat, lon, locationLabel }) {
     }
 
     load();
-    return () => { cancelled = true; };
-  }, [useLat, useLon]);
+    return () => {
+      cancelled = true;
+    };
+  }, [loc]);
 
-  if (state.status === "loading") {
+  if (!loc || state.status === "loading") {
     return (
       <div className="bg-white border border-stone-200 rounded-card p-4 animate-pulse">
         <div className="h-5 w-48 bg-stone-100 rounded" />
@@ -127,7 +160,7 @@ export default function WeatherRibbon({ lat, lon, locationLabel }) {
         <CurrentIcon size={28} className="text-farm-700" />
         <div>
           <div className="text-xs text-stone-500 leading-tight">
-            {label ?? "Today"} · {WMO_ICON(current.code).label}
+            {loc.label} · {WMO_ICON(current.code).label}
           </div>
           <div className="text-lg font-bold text-stone-800 leading-tight">
             {current.temp}°
