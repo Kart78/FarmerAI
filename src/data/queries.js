@@ -18,9 +18,13 @@ async function safeFetch(table, fallback, query = (q) => q) {
 
 export async function getFarmer() {
   if (!supabase) return FARMER;
-  // No auth/login flow yet — grab the first farmer row directly.
-  // Once you build login, switch this back to filtering by auth_id.
-  const { data, error } = await supabase.from("farmers").select("*").limit(1).single();
+  const { data: authData } = await supabase.auth.getUser();
+  if (!authData?.user) return FARMER;
+  const { data, error } = await supabase
+    .from("farmers")
+    .select("*")
+    .eq("auth_id", authData.user.id)
+    .single();
   if (error) {
     console.error("[farmers] fetch error:", error.message);
     return FARMER;
