@@ -1,9 +1,29 @@
-import { TrendingUp, Package, Wallet, Sprout, MapPin, Truck, CheckCircle2, Phone, Star, CloudRain, TrendingDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  TrendingUp,
+  Package,
+  Wallet,
+  Sprout,
+  MapPin,
+  Truck,
+  CheckCircle2,
+  Phone,
+  Star,
+  CloudRain,
+  TrendingDown,
+} from "lucide-react";
 import ScreenHeader from "../components/ScreenHeader.jsx";
 import VegPhoto from "../components/VegPhoto.jsx";
 import SellingWorkflow from "../components/SellingWorkflow.jsx";
-import WeatherRibbon from "../components/WeatherRibbon";
-import { ORDERS, LISTINGS, DELIVERY, INSIGHTS, FARMER } from "../data/mock.js";
+import WeatherRibbon from "../components/WeatherRibbon.jsx";
+import {
+  getFarmer,
+  getListings,
+  getOrders,
+  getDelivery,
+  getInsights,
+  getDashboardStats,
+} from "../data/queries.js";
 
 function StatCard({ label, value, sub, icon: Icon }) {
   return (
@@ -25,29 +45,91 @@ const STATUS_META = {
   Delivered: { label: "Delivered", icon: CheckCircle2, color: "text-green-600" },
 };
 
-const iconFor = (veg) => (veg === "Rain" ? CloudRain : veg === "Onion" ? TrendingDown : Sprout);
+const iconFor = (veg) =>
+  veg === "Rain" ? CloudRain : veg === "Onion" ? TrendingDown : Sprout;
 
 export default function Dashboard({ setScreen, openMenu }) {
+  const [farmer, setFarmer] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [listings, setListings] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [delivery, setDelivery] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([
+      getFarmer(),
+      getDashboardStats(),
+      getListings(),
+      getOrders(),
+      getDelivery(),
+      getInsights(),
+    ]).then(([farmerData, statsData, listingsData, ordersData, deliveryData, insightsData]) => {
+      if (cancelled) return;
+      setFarmer(farmerData);
+      setStats(statsData);
+      setListings(listingsData);
+      setOrders(ordersData);
+      setDelivery(deliveryData);
+      setInsights(insightsData);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading || !farmer || !stats) {
+    return (
+      <div className="max-w-[1600px] mx-auto p-6 text-stone-500">
+        Loading dashboard…
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-[1600px] mx-auto space-y-8">
       <ScreenHeader title="Dashboard" setScreen={setScreen} openMenu={openMenu} />
 
       <div className="lg:hidden">
         <h1 className="text-xl font-display font-semibold text-stone-800">
-          Good Morning, {FARMER.name} 👋
+          Good Morning, {farmer.name} 👋
         </h1>
         <p className="text-sm text-stone-500">Let's sell today's harvest.</p>
       </div>
 
+      <WeatherRibbon lat={farmer.lat} lon={farmer.lon} locationLabel={farmer.village} />
 
-<WeatherRibbon lat={farmer?.lat} lon={farmer?.lon} locationLabel={farmer?.village} />
-      
       {/* Quick stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Today's Revenue" value="₹12,450" sub="↑ 14% vs yesterday" icon={TrendingUp} />
-        <StatCard label="Today's Orders" value="32" sub="↑ 8 new" icon={Package} />
-        <StatCard label="Available Stock" value="1,250 Kg" sub="Across 6 items" icon={Sprout} />
-        <StatCard label="Pending Payment" value="₹8,200" sub="2 payments pending" icon={Wallet} />
+        <StatCard
+          label="Today's Revenue"
+          value={`₹${stats.todaysRevenue.toLocaleString("en-IN")}`}
+          sub={`${stats.todaysOrderCount} orders today`}
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Today's Orders"
+          value={stats.todaysOrderCount}
+          sub={`${stats.pendingCount} pending`}
+          icon={Package}
+        />
+        <StatCard
+          label="Available Stock"
+          value={`${stats.availableStockKg.toLocaleString("en-IN")} Kg`}
+          sub={`Across ${stats.listingCount} items`}
+          icon={Sprout}
+        />
+        <StatCard
+          label="Pending Payment"
+          value={`₹${stats.pendingPayment.toLocaleString("en-IN")}`}
+          sub={`${stats.pendingCount} payments pending`}
+          icon={Wallet}
+        />
       </div>
 
       {/* Wide layout: 3 columns on large screens so sections sit side-by-side instead of stacking */}
@@ -69,17 +151,24 @@ export default function Dashboard({ setScreen, openMenu }) {
               </button>
             </div>
             <div className="space-y-3">
-              {LISTINGS.map((l) => (
+              {listings.length === 0 && (
+                <p className="text-sm text-stone-400">No active listings yet.</p>
+              )}
+              {listings.map((l) => (
                 <div key={l.id} className="bg-white border border-stone-200 rounded-card p-3 flex items-center gap-3">
                   <VegPhoto src={l.photo} alt={l.name} color={l.color} size={48} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-stone-800 text-sm">{l.name}</span>
-                      <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">{l.status}</span>
+                      <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">
+                        {l.status}
+                      </span>
                     </div>
-                    <div className="text-xs text-stone-500 font-mono">{l.qty} {l.unit} · ₹{l.price}/{l.unit} · Harvested {l.harvested}</div>
+                    <div className="text-xs text-stone-500 font-mono">
+                      {l.qty} {l.unit} · ₹{l.price}/{l.unit} · Harvested {l.harvested ?? l.harvested_at}
+                    </div>
                   </div>
-                  <div className="text-xs text-stone-400 shrink-0">{l.orders} orders</div>
+                  <div className="text-xs text-stone-400 shrink-0">{l.orders ?? l.order_count ?? 0} orders</div>
                 </div>
               ))}
             </div>
@@ -94,7 +183,10 @@ export default function Dashboard({ setScreen, openMenu }) {
             </div>
             <div className="bg-white border border-stone-200 rounded-card p-4">
               <div className="space-y-3">
-                {ORDERS.slice(0, 5).map((o) => {
+                {orders.length === 0 && (
+                  <p className="text-sm text-stone-400">No orders yet.</p>
+                )}
+                {orders.slice(0, 5).map((o) => {
                   const meta = STATUS_META[o.status] || STATUS_META.New;
                   const Icon = meta.icon;
                   return (
@@ -104,7 +196,9 @@ export default function Dashboard({ setScreen, openMenu }) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-stone-800 truncate">{o.buyer}</div>
-                        <div className="text-stone-500">₹{o.value.toLocaleString("en-IN")} · {o.item} · Advance ₹{o.advance}</div>
+                        <div className="text-stone-500">
+                          ₹{Number(o.value).toLocaleString("en-IN")} · {o.item} · Advance ₹{o.advance}
+                        </div>
                       </div>
                       <div className={`flex items-center gap-1 text-xs shrink-0 ${meta.color}`}>
                         <Icon size={13} /> {meta.label}
@@ -134,7 +228,14 @@ export default function Dashboard({ setScreen, openMenu }) {
               }}
             >
               <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <path d="M 15 22 C 40 30, 45 55, 68 65" fill="none" stroke="#357a38" strokeWidth="1.2" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />
+                <path
+                  d="M 15 22 C 40 30, 45 55, 68 65"
+                  fill="none"
+                  stroke="#357a38"
+                  strokeWidth="1.2"
+                  strokeDasharray="3 2"
+                  vectorEffect="non-scaling-stroke"
+                />
               </svg>
               <div className="absolute left-[12%] top-[15%] w-3 h-3 rounded-full bg-farm-700 border-2 border-white shadow" />
               <div className="absolute left-[38%] top-[42%] w-7 h-7 rounded-full bg-farm-900 text-white flex items-center justify-center shadow-md">
@@ -142,28 +243,37 @@ export default function Dashboard({ setScreen, openMenu }) {
               </div>
               <div className="absolute left-[63%] top-[60%] w-3 h-3 rounded-full bg-blue-600 border-2 border-white shadow" />
             </div>
-            <div className="bg-white border border-stone-200 rounded-card p-4 flex items-center justify-between gap-4">
-              <div>
-                <div className="font-semibold text-stone-800 text-sm">Truck #{DELIVERY.truck}</div>
-                <div className="flex items-center gap-3 text-xs text-stone-500 mt-1">
-                  <span className="flex items-center gap-1"><Star size={12} className="text-amber-500" />{DELIVERY.rating}</span>
-                  <span>{DELIVERY.driver}</span>
-                  <span>ETA {DELIVERY.eta}</span>
+            {delivery ? (
+              <div className="bg-white border border-stone-200 rounded-card p-4 flex items-center justify-between gap-4">
+                <div>
+                  <div className="font-semibold text-stone-800 text-sm">Truck #{delivery.truck}</div>
+                  <div className="flex items-center gap-3 text-xs text-stone-500 mt-1">
+                    <span className="flex items-center gap-1">
+                      <Star size={12} className="text-amber-500" />
+                      {delivery.rating}
+                    </span>
+                    <span>{delivery.driver}</span>
+                    <span>ETA {delivery.eta ?? `${delivery.eta_minutes} mins`}</span>
+                  </div>
                 </div>
+                <button className="w-10 h-10 rounded-full bg-farm-800 text-white flex items-center justify-center shrink-0">
+                  <Phone size={15} />
+                </button>
               </div>
-              <button className="w-10 h-10 rounded-full bg-farm-800 text-white flex items-center justify-center shrink-0">
-                <Phone size={15} />
-              </button>
-            </div>
+            ) : (
+              <div className="bg-white border border-stone-200 rounded-card p-4 text-sm text-stone-400">
+                No active delivery right now.
+              </div>
+            )}
           </div>
 
           <div>
             <h2 className="font-display text-lg text-stone-800 mb-3">AI Assistant</h2>
             <div className="space-y-2 mb-3">
-              {INSIGHTS.map((i) => {
+              {insights.map((i) => {
                 const Icon = iconFor(i.veg);
                 return (
-                  <div key={i.text} className="bg-white border border-stone-200 rounded-card p-3 flex gap-3">
+                  <div key={i.id ?? i.text} className="bg-white border border-stone-200 rounded-card p-3 flex gap-3">
                     <Icon size={18} className="text-farm-700 shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm text-stone-700">{i.text}</p>
