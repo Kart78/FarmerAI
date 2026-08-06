@@ -156,7 +156,7 @@ export default function Dashboard({ setScreen, openMenu }) {
               )}
               {listings.map((l) => (
                 <div key={l.id} className="bg-white border border-stone-200 rounded-card p-3 flex items-center gap-3">
-                  <VegPhoto src={l.photo} alt={l.name} color={l.color} size={48} />
+              <VegPhoto src={l.photo} alt={l.name} color={l.color} size={48} vegName={l.veg || l.name} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-stone-800 text-sm">{l.name}</span>
