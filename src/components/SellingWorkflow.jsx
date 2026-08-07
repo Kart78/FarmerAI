@@ -167,7 +167,8 @@ export default function SellingWorkflow({ onPublished }) {
                   veg?.id === v.id ? "border-farm-700 bg-farm-50/60 ring-1 ring-farm-700" : "border-stone-200 hover:border-stone-300"
                 }`}
               >
-                <VegPhoto alt={v.name} color={v.color} size={48} />
+                {/* vegName added so VegPhoto's Pexels lookup actually fires */}
+                <VegPhoto alt={v.name} color={v.color} size={48} vegName={v.name} />
                 <span className="text-xs font-medium text-stone-800 leading-tight">{v.name}</span>
               </button>
             ))}
@@ -193,7 +194,8 @@ export default function SellingWorkflow({ onPublished }) {
       {step === 1 && veg && (
         <StepCard number={2} title="Enter Quantity">
           <div className="flex flex-col items-center gap-2 mb-4">
-            <VegPhoto alt={veg.name} color={veg.color} size={64} />
+            {/* vegName added */}
+            <VegPhoto alt={veg.name} color={veg.color} size={64} vegName={veg.name} />
             <span className="font-semibold text-stone-800">{veg.name}</span>
           </div>
 
@@ -352,7 +354,8 @@ export default function SellingWorkflow({ onPublished }) {
               <p className="text-xs text-stone-400 mb-1.5">Added ({photos.length}/4)</p>
               <div className="flex gap-2">
                 {photos.map((c, i) => (
-                  <VegPhoto key={i} alt={veg.name} color={c} size={44} />
+                  // vegName added
+                  <VegPhoto key={i} alt={veg.name} color={c} size={44} vegName={veg.name} />
                 ))}
               </div>
             </div>
@@ -371,7 +374,8 @@ export default function SellingWorkflow({ onPublished }) {
         <div className="bg-white border border-stone-200 rounded-card p-4">
           <h3 className="font-display text-base text-stone-800 mb-3">Preview & Publish</h3>
           <div className="flex items-center gap-3 mb-4">
-            <VegPhoto alt={veg.name} color={veg.color} size={56} />
+            {/* vegName added */}
+            <VegPhoto alt={veg.name} color={veg.color} size={56} vegName={veg.name} />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-stone-800">{veg.name}</span>
@@ -406,17 +410,3 @@ export default function SellingWorkflow({ onPublished }) {
               onClick={reset}
               className="flex-1 border border-stone-300 text-stone-600 rounded-lg py-2.5 text-sm font-semibold"
             >
-              Save as Draft
-            </button>
-            <button
-              onClick={publish}
-              className="flex-1 bg-farm-800 text-white rounded-lg py-2.5 text-sm font-semibold"
-            >
-              Publish Now
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
