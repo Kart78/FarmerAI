@@ -410,3 +410,17 @@ export default function SellingWorkflow({ onPublished }) {
               onClick={reset}
               className="flex-1 border border-stone-300 text-stone-600 rounded-lg py-2.5 text-sm font-semibold"
             >
+              Save as Draft
+            </button>
+            <button
+              onClick={publish}
+              className="flex-1 bg-farm-800 text-white rounded-lg py-2.5 text-sm font-semibold"
+            >
+              Publish Now
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
