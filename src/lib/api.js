@@ -63,7 +63,7 @@ export async function signOut() {
 // ---------------------------------------------------------------------------
 export async function getFarmerProfile(userId) {
   const client = requireClient();
-  const { data, error } = await client.from("farmers").select("*").eq("id", userId).maybeSingle();
+  const { data, error } = await client.from("farmers").select("*").eq("auth_id", userId).maybeSingle();
   if (error) throw error;
   return data;
 }
