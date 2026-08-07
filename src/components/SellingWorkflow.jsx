@@ -10,35 +10,33 @@ import {
 } from "lucide-react";
 import VegPhoto from "./VegPhoto.jsx";
 
-// Shown by default, no search needed — keeps the grid to 9 tiles + Add New so it fits without scrolling.
 const DEFAULT_VEGETABLES = [
-  { id: "tomato", name: "Tomato", color: "#dc2626" },
-  { id: "onion", name: "Onion", color: "#9333ea" },
-  { id: "potato", name: "Potato", color: "#d97706" },
-  { id: "brinjal", name: "Brinjal (Eggplant)", color: "#7c3aed" },
-  { id: "okra", name: "Okra", color: "#14532d" },
-  { id: "spinach", name: "Spinach", color: "#16a34a" },
-  { id: "cabbage", name: "Cabbage", color: "#84cc16" },
-  { id: "cauliflower", name: "Cauliflower", color: "#f5f5f4" },
-  { id: "carrot", name: "Carrot", color: "#ea580c" },
+  { id: "tomato", name: "Tomato", color: "#dc2626", photo: "/produce/tomato.jpg" },
+  { id: "onion", name: "Onion", color: "#9333ea", photo: "/produce/onion.jpg" },
+  { id: "potato", name: "Potato", color: "#d97706", photo: "/produce/potato.jpg" },
+  { id: "brinjal", name: "Brinjal (Eggplant)", color: "#7c3aed", photo: "/produce/brinjal.jpg" },
+  { id: "okra", name: "Okra", color: "#14532d", photo: "/produce/okra.jpg" },
+  { id: "spinach", name: "Spinach", color: "#16a34a", photo: "/produce/spinach.jpg" },
+  { id: "cabbage", name: "Cabbage", color: "#84cc16", photo: "/produce/cabbage.jpg" },
+  { id: "cauliflower", name: "Cauliflower", color: "#f5f5f4", photo: "/produce/cauliflower.jpg" },
+  { id: "carrot", name: "Carrot", color: "#ea580c", photo: "/produce/carrot.jpg" },
 ];
 
-// Only surfaced when the farmer searches for them by name.
 const MORE_VEGETABLES = [
-  { id: "chili", name: "Green Chili", color: "#16a34a" },
-  { id: "cucumber", name: "Cucumber", color: "#65a30d" },
-  { id: "capsicum", name: "Capsicum", color: "#15803d" },
+  { id: "chili", name: "Green Chili", color: "#16a34a", photo: "/produce/green-chili.jpg" },
+  { id: "cucumber", name: "Cucumber", color: "#65a30d", photo: "/produce/cucumber.jpg" },
+  { id: "capsicum", name: "Capsicum", color: "#15803d", photo: "/produce/capsicum.jpg" },
   { id: "beans", name: "Beans", color: "#4d7c0f" },
   { id: "peas", name: "Green Peas", color: "#65a30d" },
-  { id: "radish", name: "Radish", color: "#f1f5f9" },
-  { id: "beetroot", name: "Beetroot", color: "#9f1239" },
-  { id: "bittergourd", name: "Bitter Gourd", color: "#166534" },
-  { id: "bottlegourd", name: "Bottle Gourd", color: "#a3e635" },
-  { id: "pumpkin", name: "Pumpkin", color: "#c2410c" },
+  { id: "radish", name: "Radish", color: "#f1f5f9", photo: "/produce/radish.jpg" },
+  { id: "beetroot", name: "Beetroot", color: "#9f1239", photo: "/produce/beetroot.jpg" },
+  { id: "bittergourd", name: "Bitter Gourd", color: "#166534", photo: "/produce/bitter-gourd.jpg" },
+  { id: "bottlegourd", name: "Bottle Gourd", color: "#a3e635", photo: "/produce/bottle-gourd.jpg" },
+  { id: "pumpkin", name: "Pumpkin", color: "#c2410c", photo: "/produce/pumpkin.jpg" },
   { id: "garlic", name: "Garlic", color: "#f5f5f4" },
   { id: "ginger", name: "Ginger", color: "#ca8a04" },
   { id: "sweetpotato", name: "Sweet Potato", color: "#b45309" },
-  { id: "drumstick", name: "Drumstick", color: "#4d7c0f" },
+  { id: "drumstick", name: "Drumstick", color: "#4d7c0f", photo: "/produce/drumstick.jpg" },
 ];
 
 const ALL_VEGETABLES = [...DEFAULT_VEGETABLES, ...MORE_VEGETABLES];
@@ -100,7 +98,7 @@ function NextButton({ onClick, disabled, label = "Next" }) {
 }
 
 export default function SellingWorkflow({ onPublished }) {
-  const [step, setStep] = useState(0); // 0-4 = steps, 5 = preview
+  const [step, setStep] = useState(0);
   const [search, setSearch] = useState("");
   const [veg, setVeg] = useState(null);
   const [quantity, setQuantity] = useState("");
@@ -131,7 +129,7 @@ export default function SellingWorkflow({ onPublished }) {
 
   const addPhoto = () => {
     if (photos.length >= 4) return;
-    setPhotos((p) => [...p, veg?.color || "#84cc16"]);
+    setPhotos((p) => [...p, veg?.photo || veg?.color || "#84cc16"]);
   };
 
   const publish = () => {
@@ -167,8 +165,7 @@ export default function SellingWorkflow({ onPublished }) {
                   veg?.id === v.id ? "border-farm-700 bg-farm-50/60 ring-1 ring-farm-700" : "border-stone-200 hover:border-stone-300"
                 }`}
               >
-                {/* vegName added so VegPhoto's Pexels lookup actually fires */}
-                <VegPhoto alt={v.name} color={v.color} size={48} vegName={v.name} />
+                <VegPhoto alt={v.name} color={v.color} size={64} src={v.photo} vegName={v.name} />
                 <span className="text-xs font-medium text-stone-800 leading-tight">{v.name}</span>
               </button>
             ))}
@@ -194,8 +191,7 @@ export default function SellingWorkflow({ onPublished }) {
       {step === 1 && veg && (
         <StepCard number={2} title="Enter Quantity">
           <div className="flex flex-col items-center gap-2 mb-4">
-            {/* vegName added */}
-            <VegPhoto alt={veg.name} color={veg.color} size={64} vegName={veg.name} />
+            <VegPhoto alt={veg.name} color={veg.color} size={72} src={veg.photo} vegName={veg.name} />
             <span className="font-semibold text-stone-800">{veg.name}</span>
           </div>
 
@@ -353,10 +349,19 @@ export default function SellingWorkflow({ onPublished }) {
             <div className="mb-3">
               <p className="text-xs text-stone-400 mb-1.5">Added ({photos.length}/4)</p>
               <div className="flex gap-2">
-                {photos.map((c, i) => (
-                  // vegName added
-                  <VegPhoto key={i} alt={veg.name} color={c} size={44} vegName={veg.name} />
-                ))}
+                {photos.map((p, i) => {
+                  const isPhotoUrl = typeof p === "string" && p.startsWith("/");
+                  return (
+                    <VegPhoto
+                      key={i}
+                      alt={veg.name}
+                      color={isPhotoUrl ? veg.color : p}
+                      size={44}
+                      src={isPhotoUrl ? p : undefined}
+                      vegName={veg.name}
+                    />
+                  );
+                })}
               </div>
             </div>
           )}
@@ -374,8 +379,7 @@ export default function SellingWorkflow({ onPublished }) {
         <div className="bg-white border border-stone-200 rounded-card p-4">
           <h3 className="font-display text-base text-stone-800 mb-3">Preview & Publish</h3>
           <div className="flex items-center gap-3 mb-4">
-            {/* vegName added */}
-            <VegPhoto alt={veg.name} color={veg.color} size={56} vegName={veg.name} />
+            <VegPhoto alt={veg.name} color={veg.color} size={60} src={veg.photo} vegName={veg.name} />
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-stone-800">{veg.name}</span>
