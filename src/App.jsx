@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { AuthProvider, useAuth } from "./hooks/useAuth.jsx";
+import Login from "./screens/Login.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import TopBar from "./components/TopBar.jsx";
 import BottomNav from "./components/BottomNav.jsx";
@@ -12,13 +14,40 @@ import Notifications from "./screens/Notifications.jsx";
 import Payments from "./screens/Payments.jsx";
 import Customers from "./screens/Customers.jsx";
 import Settings from "./screens/Settings.jsx";
-import { FARMER } from "./data/mock.js";
 
-export default function App() {
+function LoadingScreen({ label }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm">
+      {label}
+    </div>
+  );
+}
+
+function AppShell() {
+  const { supabaseConfigured, sessionChecked, user, farmer, farmerLoading } = useAuth();
   const [screen, setScreen] = useState("dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const openMenu = () => setMenuOpen(true);
   const closeMenu = () => setMenuOpen(false);
+
+  if (!supabaseConfigured) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-stone-50 px-6 text-center">
+        <div>
+          <h1 className="font-display font-semibold text-lg text-stone-800 mb-2">
+            Connect Supabase to continue
+          </h1>
+          <p className="text-sm text-stone-500 max-w-sm">
+            Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment and redeploy.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sessionChecked) return <LoadingScreen label="Loading…" />;
+  if (!user) return <Login />;
+  if (farmerLoading || !farmer) return <LoadingScreen label="Setting up your account…" />;
 
   const renderScreen = () => {
     switch (screen) {
@@ -51,10 +80,26 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       <TopBar onMenuClick={openMenu} />
       <div className="flex flex-1 min-h-0">
-        <Sidebar screen={screen} setScreen={setScreen} farmer={FARMER} mobileOpen={menuOpen} closeMobile={closeMenu} />
-        <main className="flex-1 p-4 sm:p-5 pb-20 md:pb-5 overflow-y-auto min-w-0">{renderScreen()}</main>
+        <Sidebar
+          screen={screen}
+          setScreen={setScreen}
+          farmer={farmer}
+          mobileOpen={menuOpen}
+          closeMobile={closeMenu}
+        />
+        <main className="flex-1 p-4 sm:p-5 pb-20 md:pb-5 overflow-y-auto min-w-0">
+          {renderScreen()}
+        </main>
       </div>
       <BottomNav screen={screen} setScreen={setScreen} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
