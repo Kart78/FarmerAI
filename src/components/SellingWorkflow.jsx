@@ -7,8 +7,12 @@ import {
   Sparkles,
   ShieldCheck,
   ArrowLeft,
+  Clock,
 } from "lucide-react";
 import VegPhoto from "./VegPhoto.jsx";
+import { uploadListingPhoto } from "../lib/uploadPhoto.js";
+import { supabase } from "../lib/supabaseClient.js";
+import { createListing, getMarketPrices } from "../lib/api.js";
 
 const DEFAULT_VEGETABLES = [
   { id: "tomato", name: "Tomato", color: "#dc2626", photo: "/produce/tomato.jpg" },
@@ -40,11 +44,19 @@ const MORE_VEGETABLES = [
 ];
 
 const ALL_VEGETABLES = [...DEFAULT_VEGETABLES, ...MORE_VEGETABLES];
-
 const UNITS = ["Kg", "Quintal", "Dozen", "Bundle"];
 const STEP_LABELS = ["Select Vegetable", "Enter Quantity", "Set Your Price", "Harvested", "Add Photo"];
-const MARKET_PRICE = 31;
-const SUGGESTED_PRICE = 30;
+
+function timeAgo(iso) {
+  if (!iso) return "";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
 
 function StepDots({ step }) {
   return (
@@ -106,14 +118,22 @@ export default function SellingWorkflow({ onPublished }) {
   const [price, setPrice] = useState("");
   const [harvested, setHarvested] = useState("Today");
   const [harvestDate, setHarvestDate] = useState("");
-  const [photos, setPhotos] = useState([]);
+  const [photos, setPhotos] = useState([]); // [{ url, takenAt }]
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [addingVeg, setAddingVeg] = useState(false);
+  const [marketPrice, setMarketPrice] = useState(null); // { price, unit } for the selected vegetable, from Supabase
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
 
   const query = search.trim().toLowerCase();
   const visibleVegetables = query
     ? ALL_VEGETABLES.filter((v) => v.name.toLowerCase().includes(query))
     : DEFAULT_VEGETABLES;
 
-  const priceDiffPct = price ? Math.round(((MARKET_PRICE - Number(price)) / MARKET_PRICE) * 100) : null;
+  const priceDiffPct =
+    price && marketPrice ? Math.round(((marketPrice.price - Number(price)) / marketPrice.price) * 100) : null;
+  const suggestedPrice = marketPrice ? Math.round(marketPrice.price * 0.97) : null; // suggest ~3% under market
 
   const reset = () => {
     setStep(0);
@@ -125,16 +145,92 @@ export default function SellingWorkflow({ onPublished }) {
     setHarvested("Today");
     setHarvestDate("");
     setPhotos([]);
+    setMarketPrice(null);
+    setPublishError("");
   };
 
-  const addPhoto = () => {
-    if (photos.length >= 4) return;
-    setPhotos((p) => [...p, veg?.photo || veg?.color || "#84cc16"]);
+  const selectVeg = async (v) => {
+    setVeg(v);
+    setStep(1);
+    setMarketPrice(null);
+    try {
+      const prices = await getMarketPrices();
+      const row = prices[v.id];
+      if (row) setMarketPrice({ price: Number(row.price), unit: row.unit });
+    } catch {
+      // No market price available (e.g. custom vegetable, or Supabase not reachable) —
+      // the AI suggestion box just won't render rather than showing a fake number.
+    }
   };
 
-  const publish = () => {
-    onPublished && onPublished();
-    reset();
+  const currentFarmerId = async () => {
+    if (!supabase) throw new Error("Supabase isn't configured.");
+    const { data } = await supabase.auth.getUser();
+    if (!data?.user) throw new Error("Sign in to continue.");
+    return data.user.id;
+  };
+
+  const handleFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || photos.length >= 4) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const farmerId = await currentFarmerId();
+      const url = await uploadListingPhoto(file, farmerId);
+      setPhotos((p) => [...p, { url, takenAt: new Date().toISOString() }]);
+    } catch (err) {
+      setUploadError(err.message || "Upload failed. Try again.");
+    }
+    setUploading(false);
+  };
+
+  const handleAddCustomVegetable = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    const name = search.trim() || "Custom Vegetable";
+    const custom = { id: "custom-" + Date.now(), name, color: "#78716c" };
+    setVeg(custom);
+    setStep(1);
+    setMarketPrice(null); // no catalog price for a custom vegetable
+    if (!file) return;
+    setAddingVeg(true);
+    try {
+      const farmerId = await currentFarmerId();
+      const url = await uploadListingPhoto(file, farmerId);
+      setVeg((v) => (v && v.id === custom.id ? { ...v, photo: url } : v));
+    } catch {
+      // Keep the color-swatch fallback — not worth blocking the flow over a failed photo.
+    }
+    setAddingVeg(false);
+  };
+
+  const publish = async (status = "Live") => {
+    setPublishing(true);
+    setPublishError("");
+    try {
+      const farmerId = await currentFarmerId();
+      await createListing(farmerId, {
+        vegetable_id: veg.id?.startsWith("custom-") ? null : veg.id,
+        name: veg.name,
+        qty: Number(quantity),
+        unit,
+        price: Number(price),
+        harvested_on:
+          harvested === "Pick a Date" && harvestDate ? harvestDate : new Date().toISOString().slice(0, 10),
+        status,
+        photo_url: photos[0]?.url || veg.photo || null,
+        photos,
+        color: veg.color,
+        gps_verified: true,
+      });
+      onPublished && onPublished();
+      reset();
+    } catch (err) {
+      setPublishError(err.message || "Couldn't publish. Try again.");
+    }
+    setPublishing(false);
   };
 
   return (
@@ -157,12 +253,11 @@ export default function SellingWorkflow({ onPublished }) {
             {visibleVegetables.map((v) => (
               <button
                 key={v.id}
-                onClick={() => {
-                  setVeg(v);
-                  setStep(1);
-                }}
+                onClick={() => selectVeg(v)}
                 className={`rounded-xl border p-2 flex flex-col items-center gap-1.5 text-center transition-colors ${
-                  veg?.id === v.id ? "border-farm-700 bg-farm-50/60 ring-1 ring-farm-700" : "border-stone-200 hover:border-stone-300"
+                  veg?.id === v.id
+                    ? "border-farm-700 bg-farm-50/60 ring-1 ring-farm-700"
+                    : "border-stone-200 hover:border-stone-300"
                 }`}
               >
                 <VegPhoto alt={v.name} color={v.color} size={64} src={v.photo} vegName={v.name} />
@@ -174,17 +269,17 @@ export default function SellingWorkflow({ onPublished }) {
             )}
           </div>
 
-          <button
-            onClick={() => {
-              const name = search.trim() || "Custom Vegetable";
-              const custom = { id: "custom-" + Date.now(), name, color: "#78716c" };
-              setVeg(custom);
-              setStep(1);
-            }}
-            className="w-full mt-3 border border-dashed border-stone-300 text-stone-500 rounded-xl py-2.5 flex items-center justify-center gap-2 text-sm font-medium hover:border-farm-700 hover:text-farm-700"
-          >
-            <Plus size={15} /> Add New Vegetable
-          </button>
+          <label className="w-full mt-3 border border-dashed border-stone-300 text-stone-500 rounded-xl py-2.5 flex items-center justify-center gap-2 text-sm font-medium hover:border-farm-700 hover:text-farm-700 cursor-pointer">
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              disabled={addingVeg}
+              onChange={handleAddCustomVegetable}
+            />
+            <Plus size={15} /> {addingVeg ? "Adding…" : "Add New Vegetable (with photo)"}
+          </label>
         </StepCard>
       )}
 
@@ -251,27 +346,33 @@ export default function SellingWorkflow({ onPublished }) {
             <span className="text-stone-400 text-sm">/ {unit}</span>
           </div>
 
-          <div className="bg-farm-50 border border-farm-700/20 rounded-lg p-3">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Sparkles size={13} className="text-farm-700" />
-              <span className="text-xs font-semibold text-farm-700">AI Suggestion · Best Price</span>
+          {marketPrice ? (
+            <div className="bg-farm-50 border border-farm-700/20 rounded-lg p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles size={13} className="text-farm-700" />
+                <span className="text-xs font-semibold text-farm-700">AI Suggestion · Best Price</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-stone-600 mb-1">
+                <span>Market Price</span>
+                <span className="font-mono">₹{marketPrice.price} / {marketPrice.unit}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-stone-600">
+                <span>Suggested Price</span>
+                <span className="font-mono">₹{suggestedPrice} / {marketPrice.unit}</span>
+              </div>
+              {priceDiffPct !== null && priceDiffPct !== 0 && (
+                <p className="text-xs text-farm-700 font-medium mt-2">
+                  {priceDiffPct > 0
+                    ? `You are ${priceDiffPct}% below market price`
+                    : `You are ${Math.abs(priceDiffPct)}% above market price`}
+                </p>
+              )}
             </div>
-            <div className="flex items-center justify-between text-xs text-stone-600 mb-1">
-              <span>Market Price</span>
-              <span className="font-mono">₹{MARKET_PRICE} / {unit}</span>
-            </div>
-            <div className="flex items-center justify-between text-xs text-stone-600">
-              <span>Suggested Price</span>
-              <span className="font-mono">₹{SUGGESTED_PRICE} / {unit}</span>
-            </div>
-            {priceDiffPct !== null && priceDiffPct !== 0 && (
-              <p className="text-xs text-farm-700 font-medium mt-2">
-                {priceDiffPct > 0
-                  ? `You are ${priceDiffPct}% below market price`
-                  : `You are ${Math.abs(priceDiffPct)}% above market price`}
-              </p>
-            )}
-          </div>
+          ) : (
+            <p className="text-xs text-stone-400">
+              No market price on file for this item yet — set whatever price feels right.
+            </p>
+          )}
 
           <div className="flex gap-2 mt-4">
             <button onClick={() => setStep(1)} className="border border-stone-300 text-stone-600 rounded-lg px-3 py-2.5">
@@ -336,32 +437,52 @@ export default function SellingWorkflow({ onPublished }) {
 
       {step === 4 && veg && (
         <StepCard number={5} title="Add Photo">
-          <p className="text-xs text-stone-500 mb-3">Add a clear photo</p>
-          <button
-            onClick={addPhoto}
-            className="w-full h-32 border-2 border-dashed border-stone-300 rounded-xl flex flex-col items-center justify-center gap-2 text-stone-400 hover:border-farm-700 hover:text-farm-700 mb-3"
+          <p className="text-xs text-stone-500 mb-3">
+            Add a clear photo of your actual produce — buyers trust real, recent photos far more than stock images.
+          </p>
+
+          <label
+            className={`w-full h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 mb-3 cursor-pointer transition-colors ${
+              uploading || photos.length >= 4
+                ? "border-stone-200 text-stone-300"
+                : "border-stone-300 text-stone-400 hover:border-farm-700 hover:text-farm-700"
+            }`}
           >
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              disabled={uploading || photos.length >= 4}
+              onChange={handleFileChosen}
+            />
             <Camera size={22} />
-            <span className="text-xs">Tap to add photo</span>
-          </button>
+            <span className="text-xs">
+              {uploading ? "Uploading…" : photos.length >= 4 ? "Max 4 photos" : "Tap to take or choose a photo"}
+            </span>
+          </label>
+
+          {uploadError && <p className="text-xs text-red-600 mb-3">{uploadError}</p>}
 
           {photos.length > 0 && (
             <div className="mb-3">
               <p className="text-xs text-stone-400 mb-1.5">Added ({photos.length}/4)</p>
-              <div className="flex gap-2">
-                {photos.map((p, i) => {
-                  const isPhotoUrl = typeof p === "string" && p.startsWith("/");
-                  return (
-                    <VegPhoto
-                      key={i}
-                      alt={veg.name}
-                      color={isPhotoUrl ? veg.color : p}
-                      size={44}
-                      src={isPhotoUrl ? p : undefined}
-                      vegName={veg.name}
+              <div className="flex gap-3 flex-wrap">
+                {photos.map((p, i) => (
+                  <div key={i} className="flex flex-col items-center gap-1">
+                    <img
+                      src={p.url}
+                      alt={`${veg.name} photo ${i + 1}`}
+                      width={56}
+                      height={56}
+                      className="rounded-lg object-cover"
+                      style={{ width: 56, height: 56 }}
                     />
-                  );
-                })}
+                    <span className="flex items-center gap-0.5 text-[10px] text-farm-700 font-medium">
+                      <Clock size={9} /> {timeAgo(p.takenAt)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -379,13 +500,31 @@ export default function SellingWorkflow({ onPublished }) {
         <div className="bg-white border border-stone-200 rounded-card p-4">
           <h3 className="font-display text-base text-stone-800 mb-3">Preview & Publish</h3>
           <div className="flex items-center gap-3 mb-4">
-            <VegPhoto alt={veg.name} color={veg.color} size={60} src={veg.photo} vegName={veg.name} />
+            {photos[0] ? (
+              <img
+                src={photos[0].url}
+                alt={veg.name}
+                width={56}
+                height={56}
+                className="rounded-lg object-cover"
+                style={{ width: 56, height: 56 }}
+              />
+            ) : (
+              <VegPhoto alt={veg.name} color={veg.color} size={56} src={veg.photo} vegName={veg.name} />
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-stone-800">{veg.name}</span>
-                <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">Live</span>
+                <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-2 py-0.5 rounded-full">
+                  Live
+                </span>
               </div>
               <div className="text-sm text-stone-500 font-mono">{quantity} {unit} · ₹{price}/{unit}</div>
+              {photos[0] && (
+                <div className="flex items-center gap-0.5 text-[11px] text-farm-700 font-medium mt-0.5">
+                  <Clock size={10} /> Photo taken {timeAgo(photos[0].takenAt)}
+                </div>
+              )}
             </div>
           </div>
 
@@ -400,27 +539,32 @@ export default function SellingWorkflow({ onPublished }) {
             </div>
             <div className="flex justify-between border-b border-stone-100 pb-2">
               <span className="text-stone-500">Harvested</span>
-              <span className="text-stone-800 font-medium">{harvested === "Pick a Date" ? harvestDate || "—" : harvested}</span>
+              <span className="text-stone-800 font-medium">
+                {harvested === "Pick a Date" ? harvestDate || "—" : harvested}
+              </span>
             </div>
             <div className="flex items-center gap-1.5 text-farm-700 text-xs pt-1">
               <ShieldCheck size={13} /> GPS Verified Location
             </div>
           </div>
 
+          {publishError && <p className="text-xs text-red-600 mb-3">{publishError}</p>}
           <p className="text-xs text-stone-400 mb-3">By publishing, you agree to our terms.</p>
 
           <div className="flex gap-2">
             <button
-              onClick={reset}
-              className="flex-1 border border-stone-300 text-stone-600 rounded-lg py-2.5 text-sm font-semibold"
+              onClick={() => publish("Draft")}
+              disabled={publishing}
+              className="flex-1 border border-stone-300 text-stone-600 rounded-lg py-2.5 text-sm font-semibold disabled:opacity-50"
             >
               Save as Draft
             </button>
             <button
-              onClick={publish}
-              className="flex-1 bg-farm-800 text-white rounded-lg py-2.5 text-sm font-semibold"
+              onClick={() => publish("Live")}
+              disabled={publishing}
+              className="flex-1 bg-farm-800 disabled:bg-stone-300 text-white rounded-lg py-2.5 text-sm font-semibold"
             >
-              Publish Now
+              {publishing ? "Publishing…" : "Publish Now"}
             </button>
           </div>
         </div>
