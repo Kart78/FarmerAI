@@ -29,10 +29,11 @@ export default function VegPhoto({ src, alt, color, size = 48, vegName }) {
   }
 
   // No API key / fetch failed — clean color swatch, not a broken image icon
+  const isHex = typeof color === "string" && color.startsWith("#");
   return (
     <div
-      className={`rounded-lg flex items-center justify-center text-xs text-stone-500 ${color || "bg-stone-100"}`}
-      style={{ width: size, height: size }}
+      className={`rounded-lg flex items-center justify-center text-xs text-stone-500 ${isHex ? "" : color || "bg-stone-100"}`}
+      style={{ width: size, height: size, backgroundColor: isHex ? color : undefined }}
     >
       {alt?.[0] ?? "?"}
     </div>
