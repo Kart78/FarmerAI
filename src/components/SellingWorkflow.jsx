@@ -223,8 +223,10 @@ export default function SellingWorkflow({ farmer, onPublished }) {
     setCustomVegError("");
     try {
       const authUserId = await currentAuthUserId();
-      const url = await uploadListingPhoto(file, authUserId);
-      setVeg((v) => (v && v.id === custom.id ? { ...v, photo: url } : v));
+    const url = await uploadListingPhoto(file, authUserId);
+const takenAt = new Date().toISOString();
+setVeg((v) => (v && v.id === custom.id ? { ...v, photo: url } : v));
+setPhotos([{ url, takenAt }]); // same photo doubles as the listing photo — no need to ask twice
     } catch (err) {
       setCustomVegError(err.message || "Photo upload failed — you can still continue without one.");
     }
