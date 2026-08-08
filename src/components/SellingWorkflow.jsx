@@ -216,20 +216,19 @@ export default function SellingWorkflow({ onPublished }) {
     setPublishError("");
     try {
       const farmerId = await currentFarmerId();
-      await createListing(farmerId, {
-        vegetable_id: veg.id?.startsWith("custom-") ? null : veg.id,
-        name: veg.name,
-        qty: Number(quantity),
-        unit,
-        price: Number(price),
-        harvested_on:
-          harvested === "Pick a Date" && harvestDate ? harvestDate : new Date().toISOString().slice(0, 10),
-        status,
-        photo_url: photos[0]?.url || veg.photo || null,
-        photos,
-        color: veg.color,
-        gps_verified: true,
-      });
+   await createListing(farmerId, {
+  veg: veg.id?.startsWith("custom-") ? null : veg.id,
+  name: veg.name,
+  qty: Number(quantity),
+  unit,
+  price: Number(price),
+  harvested_at:
+    harvested === "Pick a Date" && harvestDate ? harvestDate : new Date().toISOString(),
+  status,
+  photo: photos[0]?.url || veg.photo || null,
+  photos,
+  color: veg.color,
+});
       onPublished && onPublished();
       reset();
     } catch (err) {
