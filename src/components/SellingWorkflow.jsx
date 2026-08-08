@@ -57,12 +57,14 @@ function timeAgo(iso) {
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
 }
+
 // Pexels search only makes sense for real catalog vegetable names.
-// A custom item's name ("Custom Vegetable", or whatever the farmer typed)
-// isn't a meaningful search term, so never trigger a live photo search for it.
+// A custom item's name isn't a meaningful search term, so never trigger a
+// live photo search for it — fall back to the color swatch instead.
 function catalogVegName(v) {
   return v?.id?.startsWith("custom-") ? undefined : v?.name;
 }
+
 function StepDots({ step }) {
   return (
     <div className="flex items-center mb-5">
@@ -114,7 +116,10 @@ function NextButton({ onClick, disabled, label = "Next" }) {
   );
 }
 
-export default function SellingWorkflow({ onPublished }) {
+// farmer = the signed-in farmer's row from the `farmers` table (has .id, the
+// row id needed for farmer_id columns — NOT the same as the Supabase Auth
+// user id, which is only used for Storage upload paths).
+export default function SellingWorkflow({ farmer, onPublished }) {
   const [step, setStep] = useState(0);
   const [search, setSearch] = useState("");
   const [veg, setVeg] = useState(null);
@@ -126,10 +131,15 @@ export default function SellingWorkflow({ onPublished }) {
   const [photos, setPhotos] = useState([]); // [{ url, takenAt }]
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [addingVeg, setAddingVeg] = useState(false);
-  const [marketPrice, setMarketPrice] = useState(null); // { price, unit } for the selected vegetable, from Supabase
+  const [marketPrice, setMarketPrice] = useState(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState("");
+
+  // "Add New Vegetable" inline form state
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [addingVeg, setAddingVeg] = useState(false);
+  const [customVegError, setCustomVegError] = useState("");
 
   const query = search.trim().toLowerCase();
   const visibleVegetables = query
@@ -138,7 +148,7 @@ export default function SellingWorkflow({ onPublished }) {
 
   const priceDiffPct =
     price && marketPrice ? Math.round(((marketPrice.price - Number(price)) / marketPrice.price) * 100) : null;
-  const suggestedPrice = marketPrice ? Math.round(marketPrice.price * 0.97) : null; // suggest ~3% under market
+  const suggestedPrice = marketPrice ? Math.round(marketPrice.price * 0.97) : null;
 
   const reset = () => {
     setStep(0);
@@ -152,6 +162,9 @@ export default function SellingWorkflow({ onPublished }) {
     setPhotos([]);
     setMarketPrice(null);
     setPublishError("");
+    setShowCustomForm(false);
+    setCustomName("");
+    setCustomVegError("");
   };
 
   const selectVeg = async (v) => {
@@ -163,12 +176,14 @@ export default function SellingWorkflow({ onPublished }) {
       const row = prices[v.id];
       if (row) setMarketPrice({ price: Number(row.price), unit: row.unit });
     } catch {
-      // No market price available (e.g. custom vegetable, or Supabase not reachable) —
-      // the AI suggestion box just won't render rather than showing a fake number.
+      // No market price on file — the AI suggestion box just won't render.
     }
   };
 
-  const currentFarmerId = async () => {
+  // Used only for Supabase Storage upload paths — Storage's RLS policy checks
+  // auth.uid() directly, which IS the raw Supabase Auth user id (unlike
+  // farmer_id columns in our own tables, which use farmers.id instead).
+  const currentAuthUserId = async () => {
     if (!supabase) throw new Error("Supabase isn't configured.");
     const { data } = await supabase.auth.getUser();
     if (!data?.user) throw new Error("Sign in to continue.");
@@ -182,8 +197,8 @@ export default function SellingWorkflow({ onPublished }) {
     setUploading(true);
     setUploadError("");
     try {
-      const farmerId = await currentFarmerId();
-      const url = await uploadListingPhoto(file, farmerId);
+      const authUserId = await currentAuthUserId();
+      const url = await uploadListingPhoto(file, authUserId);
       setPhotos((p) => [...p, { url, takenAt: new Date().toISOString() }]);
     } catch (err) {
       setUploadError(err.message || "Upload failed. Try again.");
@@ -194,41 +209,49 @@ export default function SellingWorkflow({ onPublished }) {
   const handleAddCustomVegetable = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    const name = search.trim() || "Custom Vegetable";
+    const name = customName.trim();
+    if (!name) return; // shouldn't happen — input is required before this fires
+
     const custom = { id: "custom-" + Date.now(), name, color: "#78716c" };
     setVeg(custom);
     setStep(1);
-    setMarketPrice(null); // no catalog price for a custom vegetable
-    if (!file) return;
+    setMarketPrice(null);
+    setShowCustomForm(false);
+
+    if (!file) return; // photo is optional; falls back to the color swatch
     setAddingVeg(true);
+    setCustomVegError("");
     try {
-      const farmerId = await currentFarmerId();
-      const url = await uploadListingPhoto(file, farmerId);
+      const authUserId = await currentAuthUserId();
+      const url = await uploadListingPhoto(file, authUserId);
       setVeg((v) => (v && v.id === custom.id ? { ...v, photo: url } : v));
-    } catch {
-      // Keep the color-swatch fallback — not worth blocking the flow over a failed photo.
+    } catch (err) {
+      setCustomVegError(err.message || "Photo upload failed — you can still continue without one.");
     }
     setAddingVeg(false);
   };
 
   const publish = async (status = "Live") => {
+    if (!farmer?.id) {
+      setPublishError("Still loading your farmer account — wait a moment and try again.");
+      return;
+    }
     setPublishing(true);
     setPublishError("");
     try {
-      const farmerId = await currentFarmerId();
-   await createListing(farmerId, {
-  veg: veg.id?.startsWith("custom-") ? null : veg.id,
-  name: veg.name,
-  qty: Number(quantity),
-  unit,
-  price: Number(price),
-  harvested_at:
-    harvested === "Pick a Date" && harvestDate ? harvestDate : new Date().toISOString(),
-  status,
-  photo: photos[0]?.url || veg.photo || null,
-  photos,
-  color: veg.color,
-});
+      await createListing(farmer.id, {
+        veg: veg.id?.startsWith("custom-") ? null : veg.id,
+        name: veg.name,
+        qty: Number(quantity),
+        unit,
+        price: Number(price),
+        harvested_at:
+          harvested === "Pick a Date" && harvestDate ? harvestDate : new Date().toISOString(),
+        status,
+        photo: photos[0]?.url || veg.photo || null,
+        photos,
+        color: veg.color,
+      });
       onPublished && onPublished();
       reset();
     } catch (err) {
@@ -273,24 +296,78 @@ export default function SellingWorkflow({ onPublished }) {
             )}
           </div>
 
-          <label className="w-full mt-3 border border-dashed border-stone-300 text-stone-500 rounded-xl py-2.5 flex items-center justify-center gap-2 text-sm font-medium hover:border-farm-700 hover:text-farm-700 cursor-pointer">
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              disabled={addingVeg}
-              onChange={handleAddCustomVegetable}
-            />
-            <Plus size={15} /> {addingVeg ? "Adding…" : "Add New Vegetable (with photo)"}
-          </label>
+          {!showCustomForm ? (
+            <button
+              onClick={() => {
+                setCustomName(search.trim());
+                setShowCustomForm(true);
+              }}
+              className="w-full mt-3 border border-dashed border-stone-300 text-stone-500 rounded-xl py-2.5 flex items-center justify-center gap-2 text-sm font-medium hover:border-farm-700 hover:text-farm-700"
+            >
+              <Plus size={15} /> Add New Vegetable
+            </button>
+          ) : (
+            <div className="mt-3 border border-stone-200 rounded-xl p-3 space-y-2.5">
+              <div>
+                <label className="text-xs text-stone-500 mb-1 block">Vegetable name</label>
+                <input
+                  autoFocus
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder="e.g. Bhindi, Turai, Amaranth..."
+                  className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-farm-700/30"
+                />
+              </div>
+
+              {customVegError && <p className="text-xs text-red-600">{customVegError}</p>}
+
+              <label
+                className={`w-full border border-dashed rounded-lg py-2.5 flex items-center justify-center gap-2 text-sm font-medium ${
+                  !customName.trim() || addingVeg
+                    ? "border-stone-200 text-stone-300 cursor-not-allowed"
+                    : "border-stone-300 text-stone-600 hover:border-farm-700 hover:text-farm-700 cursor-pointer"
+                }`}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={!customName.trim() || addingVeg}
+                  onChange={handleAddCustomVegetable}
+                />
+                <Camera size={14} /> {addingVeg ? "Adding…" : "Add Photo & Continue"}
+              </label>
+
+              <button
+                onClick={() => {
+                  if (!customName.trim()) return;
+                  handleAddCustomVegetable({ target: { files: [], value: "" } });
+                }}
+                disabled={!customName.trim()}
+                className="w-full text-xs text-stone-400 disabled:opacity-50 py-1"
+              >
+                Skip photo for now
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowCustomForm(false);
+                  setCustomName("");
+                }}
+                className="w-full text-xs text-stone-400"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </StepCard>
       )}
 
       {step === 1 && veg && (
         <StepCard number={2} title="Enter Quantity">
           <div className="flex flex-col items-center gap-2 mb-4">
-            <VegPhoto alt={veg.name} color={veg.color} size={72} src={veg.photo} vegName={catalogVegName(veg)}/>
+            <VegPhoto alt={veg.name} color={veg.color} size={72} src={veg.photo} vegName={catalogVegName(veg)} />
             <span className="font-semibold text-stone-800">{veg.name}</span>
           </div>
 
