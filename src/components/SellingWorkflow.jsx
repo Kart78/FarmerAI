@@ -57,7 +57,12 @@ function timeAgo(iso) {
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
 }
-
+// Pexels search only makes sense for real catalog vegetable names.
+// A custom item's name ("Custom Vegetable", or whatever the farmer typed)
+// isn't a meaningful search term, so never trigger a live photo search for it.
+function catalogVegName(v) {
+  return v?.id?.startsWith("custom-") ? undefined : v?.name;
+}
 function StepDots({ step }) {
   return (
     <div className="flex items-center mb-5">
@@ -286,7 +291,7 @@ export default function SellingWorkflow({ onPublished }) {
       {step === 1 && veg && (
         <StepCard number={2} title="Enter Quantity">
           <div className="flex flex-col items-center gap-2 mb-4">
-            <VegPhoto alt={veg.name} color={veg.color} size={72} src={veg.photo} vegName={veg.name} />
+            <VegPhoto alt={veg.name} color={veg.color} size={72} src={veg.photo} vegName={catalogVegName(veg)}/>
             <span className="font-semibold text-stone-800">{veg.name}</span>
           </div>
 
@@ -510,7 +515,7 @@ export default function SellingWorkflow({ onPublished }) {
                 style={{ width: 56, height: 56 }}
               />
             ) : (
-              <VegPhoto alt={veg.name} color={veg.color} size={56} src={veg.photo} vegName={veg.name} />
+              <VegPhoto alt={veg.name} color={veg.color} size={56} src={veg.photo} vegName={catalogVegName(veg)} />
             )}
             <div>
               <div className="flex items-center gap-2">
