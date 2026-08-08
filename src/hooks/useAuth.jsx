@@ -19,21 +19,28 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
-  useEffect(() => {
-    if (!session?.user) {
-      setFarmer(null);
-      return;
-    }
-    let cancelled = false;
-    setFarmerLoading(true);
-    getFarmerProfile(session.user.id)
-      .then((f) => !cancelled && setFarmer(f))
-      .catch(() => !cancelled && setFarmer(null))
-      .finally(() => !cancelled && setFarmerLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user?.id]);
+ useEffect(() => {
+  if (!session?.user) {
+    setFarmer(null);
+    return;
+  }
+  let cancelled = false;
+  setFarmerLoading(true);
+  console.log("[useAuth] fetching farmer for auth user:", session.user.id);
+  getFarmerProfile(session.user.id)
+    .then((f) => {
+      console.log("[useAuth] getFarmerProfile resolved with:", f);
+      if (!cancelled) setFarmer(f);
+    })
+    .catch((err) => {
+      console.log("[useAuth] getFarmerProfile REJECTED:", err);
+      if (!cancelled) setFarmer(null);
+    })
+    .finally(() => !cancelled && setFarmerLoading(false));
+  return () => {
+    cancelled = true;
+  };
+}, [session?.user?.id]);
 
   const value = {
     supabaseConfigured: !!supabase,
