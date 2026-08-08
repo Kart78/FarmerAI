@@ -1,8 +1,5 @@
 import { supabase } from "./supabaseClient.js";
 
-// Every function below throws a clear error if Supabase isn't configured yet
-// instead of silently falling back to fake numbers — callers show a
-// "connect Supabase" state rather than pretending everything is live.
 function requireClient() {
   if (!supabase) {
     throw new Error(
@@ -37,8 +34,6 @@ export async function signInWithOtp(email) {
   if (error) throw error;
 }
 
-// Phone (SMS) auth — requires the Phone provider + an SMS provider (e.g.
-// Twilio) to be enabled in Supabase Dashboard > Authentication > Providers.
 export async function signInWithPhoneOtp(phone) {
   const client = requireClient();
   const { error } = await client.auth.signInWithOtp({ phone });
@@ -60,53 +55,55 @@ export async function signOut() {
 
 // ---------------------------------------------------------------------------
 // Farmer profile
+// farmers.id is its own uuid; the signed-in Supabase Auth user is linked via
+// farmers.auth_id, NOT farmers.id. Every farmer-scoped query below therefore
+// needs the farmer's *row id* (farmers.id), which we look up once via
+// getFarmerProfile() and then reuse — not the raw auth user id.
 // ---------------------------------------------------------------------------
-export async function getFarmerProfile(userId) {
+export async function getFarmerProfile(authUserId) {
   const client = requireClient();
-  const { data, error } = await client.from("farmers").select("*").eq("auth_id", userId).maybeSingle();
+  const { data, error } = await client
+    .from("farmers")
+    .select("*")
+    .eq("auth_id", authUserId)
+    .maybeSingle();
   if (error) throw error;
   return data;
 }
 
 // ---------------------------------------------------------------------------
-// Catalog (public, shared across all farmers)
+// Market prices (public catalog, keyed by the short veg id e.g. "tomato")
 // ---------------------------------------------------------------------------
-export async function getVegetables() {
-  const client = requireClient();
-  const { data, error } = await client.from("vegetables").select("*").order("name");
-  if (error) throw error;
-  return data ?? [];
-}
-
 export async function getMarketPrices() {
   const client = requireClient();
   const { data, error } = await client.from("market_prices").select("*");
   if (error) throw error;
   const byVeg = {};
   (data ?? []).forEach((row) => {
-    byVeg[row.vegetable_id] = row;
+    byVeg[row.veg] = row;
   });
   return byVeg;
 }
 
 // ---------------------------------------------------------------------------
 // Listings
+// farmerId here is always farmers.id (the row id), not the auth user id.
 // ---------------------------------------------------------------------------
 export async function getListings(farmerId) {
   const client = requireClient();
   const { data, error } = await client
-    .from("produce_listings")
-    .select("*, orders(count)")
+    .from("listings")
+    .select("*")
     .eq("farmer_id", farmerId)
     .order("created_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((l) => ({ ...l, orderCount: l.orders?.[0]?.count ?? 0 }));
+  return data ?? [];
 }
 
 export async function createListing(farmerId, listing) {
   const client = requireClient();
   const { data, error } = await client
-    .from("produce_listings")
+    .from("listings")
     .insert({ farmer_id: farmerId, ...listing })
     .select()
     .single();
@@ -142,21 +139,24 @@ export async function acceptOrder(orderId) {
 
 // ---------------------------------------------------------------------------
 // Deliveries
+// deliveries has no farmer_id or status column of its own — it's scoped and
+// filtered through its parent order instead (orders.farmer_id, orders.status).
 // ---------------------------------------------------------------------------
 export async function getActiveDeliveries(farmerId) {
   const client = requireClient();
   const { data, error } = await client
     .from("deliveries")
-    .select("*")
-    .eq("farmer_id", farmerId)
-    .neq("status", "Delivered")
-    .order("created_at", { ascending: false });
+    .select("*, orders!inner(id, farmer_id, status, buyer, item, value)")
+    .eq("orders.farmer_id", farmerId)
+    .eq("orders.status", "In Transit")
+    .order("updated_at", { ascending: false });
   if (error) throw error;
   return data ?? [];
 }
 
 // ---------------------------------------------------------------------------
 // Notifications
+// Note: the message column is named `text`, not `message`.
 // ---------------------------------------------------------------------------
 export async function getNotifications(farmerId) {
   const client = requireClient();
@@ -176,6 +176,7 @@ export function unreadNotificationCount(notifications) {
 
 // ---------------------------------------------------------------------------
 // Insights (AI Assistant cards)
+// Note: the message column is named `text`, and the vegetable column `veg`.
 // ---------------------------------------------------------------------------
 export async function getInsights(farmerId) {
   const client = requireClient();
@@ -190,8 +191,7 @@ export async function getInsights(farmerId) {
 }
 
 // ---------------------------------------------------------------------------
-// AI chat — routed through the ai-assistant Edge Function, never calls
-// Anthropic directly from the browser (no API key ships to the client).
+// AI chat — routed through the ai-assistant Edge Function
 // ---------------------------------------------------------------------------
 export async function askAssistant(message, farmerName) {
   const client = requireClient();
@@ -215,9 +215,12 @@ export async function getDashboardStats(farmerId) {
   const availableStock = listings
     .filter((l) => l.status === "Live")
     .reduce((sum, l) => sum + Number(l.qty || 0), 0);
-  const liveItemCount = new Set(listings.filter((l) => l.status === "Live").map((l) => l.vegetable_id)).size;
+  const liveItemCount = new Set(listings.filter((l) => l.status === "Live").map((l) => l.veg)).size;
   const pendingOrders = orders.filter((o) => o.status !== "Delivered");
-  const pendingPayment = pendingOrders.reduce((sum, o) => sum + (Number(o.value || 0) - Number(o.advance || 0)), 0);
+  const pendingPayment = pendingOrders.reduce(
+    (sum, o) => sum + (Number(o.value || 0) - Number(o.advance || 0)),
+    0
+  );
 
   return {
     todaysRevenue,
