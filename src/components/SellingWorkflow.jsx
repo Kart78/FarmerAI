@@ -120,6 +120,7 @@ function NextButton({ onClick, disabled, label = "Next" }) {
 // row id needed for farmer_id columns — NOT the same as the Supabase Auth
 // user id, which is only used for Storage upload paths).
 export default function SellingWorkflow({ farmer, onPublished }) {
+  console.log("SellingWorkflow farmer prop:", farmer);
   const [step, setStep] = useState(0);
   const [search, setSearch] = useState("");
   const [veg, setVeg] = useState(null);
